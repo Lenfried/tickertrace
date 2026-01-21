@@ -3,3 +3,11 @@ TickerTrace is a dynamic stock and ETF tracking application buit with Python, Fl
 
 # Problem the App solves
 Many users want an easy way to track the value of multiple stocks they own without using complex financial paltforms. This applicaton helps users calculate their total portfolio value by allowing them to enter stock ticker symbols and the number of shares they own. The application then displays real time price data and portfolio brakdowns in a clear interface.  
+
+# Features overview
+- Supports input of up to five stock ticker symbols
+- Allows users to enter the number of shares owned for each stock
+- Displays current stock price and daily price change 
+- Calculate total value per stock and overall portfolio value
+- Retrieves real time market data using API
+- Clean, card based user interface for easy readability
