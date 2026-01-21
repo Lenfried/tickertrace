@@ -11,3 +11,8 @@ Many users want an easy way to track the value of multiple stocks they own witho
 - Calculate total value per stock and overall portfolio value
 - Retrieves real time market data using API
 - Clean, card based user interface for easy readability
+
+# Setup Instructions 
+1. Clone the repository from GitHub
+2. Ensure python3 is installed on your system 
+3. Install the required dependencies using 'pip'
