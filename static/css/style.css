@@ -183,6 +183,32 @@ form {
     box-shadow: 0 10px 25px rgba(91, 143, 196, 0.4);
 }
 
+.download-button {
+    display: inline-block;
+    padding: 12px 30px;
+    background: rgba(76, 175, 80, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-right: 10px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    font-size: 1em;
+}
+
+.download-button:hover {
+    background: rgba(56, 142, 60, 1);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(76, 175, 80, 0.4);
+}
+
+.download-button:active {
+    transform: translateY(0);
+}
+
 /* Portfolio Summary */
 .error-messages {
     background: rgba(255, 200, 200, 0.5);

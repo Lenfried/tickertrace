@@ -1,5 +1,8 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import external_api
+import csv
+import io
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -89,5 +92,53 @@ def track():
     return render_template('results.html', stocks=stocks, total_portfolio_value=total_portfolio_value, errors=errors)
 
 
+@app.route('/download-csv', methods=['POST'])
+def download_csv():
+    """Generate and download portfolio results as CSV."""
+    data = request.get_json()
+    stocks = data.get('stocks', [])
+    total_value = data.get('total_portfolio_value', 0)
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow(['Ticker', 'Company Name', 'Shares', 'Current Price', 'Daily Change %', 'Daily Change $', 'Total Value', 'Portfolio %'])
+    
+    # Write stock data
+    for stock in stocks:
+        writer.writerow([
+            stock['ticker'],
+            stock['company_name'],
+            f"{stock['shares']:.2f}",
+            f"${stock['current_price']:.2f}",
+            f"{stock['percentage_change']:.2f}%",
+            f"${stock['price_change_usd']:.2f}",
+            f"${stock['total_value']:.2f}",
+            f"{stock['portfolio_percentage']:.2f}%"
+        ])
+    
+    # Add total row
+    writer.writerow([])
+    writer.writerow(['TOTAL', '', '', '', '', '', f"${total_value:.2f}", '100.00%'])
+    
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f'portfolio_{timestamp}.csv'
+    
+    # Convert to bytes
+    output.seek(0)
+    csv_bytes = io.BytesIO(output.getvalue().encode('utf-8'))
+    
+    return send_file(
+        csv_bytes,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename
+    )
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='localhost', port=5000)
+
