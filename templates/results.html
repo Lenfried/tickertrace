@@ -10,6 +10,17 @@
     <div class="container">
         <h1>Portfolio Overview</h1>
         
+        {% if errors %}
+        <div class="error-messages">
+            <h3>Errors:</h3>
+            <ul>
+                {% for error in errors %}
+                <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
         <div class="portfolio-summary">
             <p><strong>Total Portfolio Value:</strong> ${{ total_portfolio_value | round(2) }}</p>
         </div>

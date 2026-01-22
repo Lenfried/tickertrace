@@ -184,6 +184,39 @@ form {
 }
 
 /* Portfolio Summary */
+.error-messages {
+    background: rgba(255, 200, 200, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 100, 100, 0.4);
+    border-radius: 20px;
+    padding: 20px 25px;
+    margin-bottom: 30px;
+    box-shadow: 0 8px 32px rgba(255, 0, 0, 0.1);
+    animation: slideIn 0.6s ease-out;
+}
+
+.error-messages h3 {
+    color: #8B2E2E;
+    margin-bottom: 10px;
+    font-size: 1.2em;
+}
+
+.error-messages ul {
+    list-style: none;
+    padding: 0;
+}
+
+.error-messages li {
+    color: #D32F2F;
+    font-weight: 500;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(211, 47, 47, 0.2);
+}
+
+.error-messages li:last-child {
+    border-bottom: none;
+}
+
 .portfolio-summary {
     background: rgba(255, 255, 255, 0.25);
     backdrop-filter: blur(12px);
