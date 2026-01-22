@@ -1,8 +1,22 @@
 import yfinance as yf
-import requests
-from typing import Dict, List, Any, Optional
-import datetime
+from typing import Dict, Any, Optional
+import time
+import threading
 
+_rate_lock = threading.Lock()
+_last_call_ts = 0.0
+_min_interval = 0.5  # seconds between outbound Yahoo calls
+
+
+def _throttle():
+    global _last_call_ts
+    with _rate_lock:
+        now = time.monotonic()
+        wait_for = _min_interval - (now - _last_call_ts)
+        if wait_for > 0:
+            time.sleep(wait_for)
+            now = time.monotonic()
+        _last_call_ts = now
 
 def _safe_float(x) -> Optional[float]:
 	try:
@@ -22,6 +36,7 @@ def get_ticker_summary(symbol: str) -> Dict[str, Any]:
 	  - change: market_price - previous_close (float) or None
 	  - change_percent: percent change (float) or None
 	  - direction: 'up' | 'down' | 'flat' | 'unknown'
+	  - error: error message if API call failed (str) or None
 	  - raw_info: small subset of ticker.info for debugging (can be empty)
 
 	Notes:
@@ -29,32 +44,59 @@ def get_ticker_summary(symbol: str) -> Dict[str, Any]:
 	  - Values can be None if data is missing from Yahoo.
 	"""
 	symbol = symbol.upper().strip()
-	t = yf.Ticker(symbol)
+	_throttle()
+	
+	try:
+		t = yf.Ticker(symbol)
+		fast = t.fast_info
 
-	# Try the faster fast_info first, then fall back to info/history
-	fast = getattr(t, "fast_info", {}) or {}
-	info = getattr(t, "info", {}) or {}
+		# company name
+		name = symbol
 
-	# company name
-	name = info.get("shortName") or info.get("longName") or symbol
-
-	market_price = _safe_float(fast.get("last_price") or info.get("currentPrice"))
-	previous_close = _safe_float(fast.get("previous_close") or info.get("previousClose") or info.get("regularMarketPreviousClose"))
-
-	# If market_price is still None, attempt to get last Close from history
-	if market_price is None:
-		try:
+		# Try multiple price sources - fast_info keys vary
+		market_price = _safe_float(fast.get("last_price")) or \
+		               _safe_float(fast.get("regularMarketPrice")) or \
+		               _safe_float(fast.get("currentPrice"))
+		
+		previous_close = _safe_float(fast.get("previous_close")) or \
+		                 _safe_float(fast.get("regularMarketPreviousClose")) or \
+		                 _safe_float(fast.get("previousClose"))
+		
+		# Fallback to history if fast_info doesn't have the data
+		if market_price is None or previous_close is None:
 			hist = t.history(period="2d", interval="1d")
 			if not hist.empty:
-				market_price = _safe_float(hist['Close'].iloc[-1])
-				if previous_close is None and len(hist['Close']) > 1:
+				if market_price is None and 'Close' in hist.columns:
+					market_price = _safe_float(hist['Close'].iloc[-1])
+				if previous_close is None and len(hist) > 1 and 'Close' in hist.columns:
 					previous_close = _safe_float(hist['Close'].iloc[-2])
-		except Exception:
-			pass
+	except Exception as e:
+		# Handle network errors, 429 rate limits, invalid tickers, etc.
+		error_msg = str(e)
+		if '429' in error_msg or 'Too Many Requests' in error_msg:
+			error_msg = 'Rate limited by Yahoo Finance. Please wait and try again.'
+		elif 'No data found' in error_msg or 'not found' in error_msg.lower():
+			error_msg = f'Ticker "{symbol}" not found.'
+		else:
+			error_msg = f'Unable to fetch data: {error_msg[:100]}'
+		
+		return {
+			'symbol': symbol,
+			'name': symbol,
+			'market_price': None,
+			'previous_close': None,
+			'change': None,
+			'change_percent': None,
+			'direction': 'unknown',
+			'error': error_msg,
+			'raw_info': {},
+		}
+
 
 	change = None
 	change_percent = None
 	direction = "unknown"
+
 	if market_price is not None and previous_close is not None:
 		try:
 			change = market_price - previous_close
@@ -70,10 +112,13 @@ def get_ticker_summary(symbol: str) -> Dict[str, Any]:
 			pass
 
 	# Provide a tiny slice of info for debugging without returning huge blobs
-	raw_info = {
-		'exchange': info.get('exchange') or info.get('exchangeName'),
-		'currency': info.get('currency') or fast.get('currency'),
-	}
+	raw_info = {}
+	try:
+		raw_info['exchange'] = fast.get('exchange')
+		raw_info['currency'] = fast.get('currency')
+	except Exception:
+		# Accessing fast_info properties can fail if Yahoo response is missing keys
+		pass
 
 	return {
 		'symbol': symbol,
@@ -83,59 +128,14 @@ def get_ticker_summary(symbol: str) -> Dict[str, Any]:
 		'change': _safe_float(change) if change is not None else None,
 		'change_percent': _safe_float(change_percent) if change_percent is not None else None,
 		'direction': direction,
+		'error': None,
 		'raw_info': raw_info,
 	}
 
 
-def get_historical_series(symbol: str, period: str = "1mo", interval: str = "1d") -> List[Dict[str, Any]]:
-	"""Return historical data points for plotting.
-
-	Each point is a dict: {"timestamp": ISO8601 string, "close": float}
-
-	period examples: '1d','5d','1mo','3mo','1y','5y'
-	interval examples: '1m','5m','1d','1wk','1mo'
-	Note: intraday ('1m') may be limited to recent data.
-	"""
-	symbol = symbol.upper().strip()
-	t = yf.Ticker(symbol)
-	points: List[Dict[str, Any]] = []
-	try:
-		hist = t.history(period=period, interval=interval)
-		if hist.empty:
-			return points
-		# hist.index may be DatetimeIndex
-		for idx, row in hist.iterrows():
-			# handle pandas Timestamp
-			ts = None
-			if hasattr(idx, 'to_pydatetime'):
-				ts = idx.to_pydatetime()
-			elif isinstance(idx, (int, float)):
-				ts = datetime.datetime.fromtimestamp(idx)
-			else:
-				# fallback
-				try:
-					ts = datetime.datetime.fromisoformat(str(idx))
-				except Exception:
-					ts = None
-
-			close = _safe_float(row.get('Close') if isinstance(row, dict) else row.Close)
-			if ts is not None and close is not None:
-				points.append({'timestamp': ts.isoformat(), 'close': close})
-	except Exception:
-		# on errors, return empty list (caller should handle)
-		return []
-
-	return points
-
-
-def get_ticker_payload(symbol: str, period: str = "1mo", interval: str = "1d") -> Dict[str, Any]:
-	"""Combined payload: summary + series for frontend consumption."""
-	summary = get_ticker_summary(symbol)
-	series = get_historical_series(symbol, period=period, interval=interval)
-	return {
-		'summary': summary,
-		'series': series,
-	}
+def get_ticker_payload(symbol: str) -> Dict[str, Any]:
+	"""Legacy helper retained for compatibility; returns only summary now."""
+	return {'summary': get_ticker_summary(symbol)}
 
 
 if __name__ == '__main__':
@@ -145,6 +145,5 @@ if __name__ == '__main__':
 	examples = ['AAPL', 'DIS', 'NKE']
 	for s in examples:
 		print(f"--- {s} ---")
-		payload = get_ticker_payload(s, period='1mo', interval='1d')
-		print(json.dumps(payload['summary'], indent=2))
-		print(f"points: {len(payload['series'])}\n")
+		summary = get_ticker_summary(s)
+		print(json.dumps(summary, indent=2))
